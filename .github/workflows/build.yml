@@ -106,7 +106,7 @@ jobs:
       uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 
 
     - name: Choco Package 
-      uses: crazy-max/ghaction-chocolatey@v3.4.0
+      uses: crazy-max/ghaction-chocolatey@v4.0.0
       with:
         args: pack 
 
@@ -114,11 +114,11 @@ jobs:
       run: mv rocketchat*.nupkg rocketchat.nupkg
 
     - name: Choco add API key
-      uses: crazy-max/ghaction-chocolatey@v3.4.0
+      uses: crazy-max/ghaction-chocolatey@v4.0.0
       with:
         args: apikey -y -k ${{ secrets.CHOCO_TOKEN }} --source https://push.chocolatey.org/
 
     - name: Push to Chocolatey
-      uses: crazy-max/ghaction-chocolatey@v3.4.0
+      uses: crazy-max/ghaction-chocolatey@v4.0.0
       with:
         args: push rocketchat.nupkg -s https://push.chocolatey.org/
