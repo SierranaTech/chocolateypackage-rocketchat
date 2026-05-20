@@ -49,7 +49,7 @@ jobs:
           <metadata>
             <id>rocketchat</id>
             <version>${{ env.version }}</version>
-            <packageSourceUrl>https://github.com/Sierra1011/chocolateypackage-rocketchat</packageSourceUrl>
+            <packageSourceUrl>https://github.com/SierranaTech/chocolateypackage-rocketchat</packageSourceUrl>
             <owners>Sierra1011</owners>
             <title>Rocket.Chat</title>
             <authors>Rocket.Chat</authors>
