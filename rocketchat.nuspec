@@ -3,12 +3,12 @@
   <metadata>
     <id>rocketchat</id>
     <version>4.14.1</version>
-    <packageSourceUrl>https://github.com/Sierra1011/chocolateypackage-rocketchat</packageSourceUrl>
-    <owners>Sierra1011</owners>
+    <packageSourceUrl>https://github.com/SierranaTech/chocolateypackage-rocketchat</packageSourceUrl>
+    <owners>SierranaTech</owners>
     <title>Rocket.Chat</title>
     <authors>Rocket.Chat</authors>
     <projectUrl>https://rocket.chat/ </projectUrl>
-    <iconUrl>https://github.com/RocketChat/Rocket.Chat.Artwork/blob/master/Logos/icon.svg</iconUrl>
+    <iconUrl>https://raw.githubusercontent.com/RocketChat/Rocket.Chat.Artwork/master/Logos/icon.svg</iconUrl>
     <licenseUrl>https://github.com/RocketChat/Rocket.Chat.Electron/blob/develop/LICENSE</licenseUrl>
     <requireLicenseAcceptance>true</requireLicenseAcceptance>
     <projectSourceUrl>https://github.com/RocketChat/Rocket.Chat.Electron</projectSourceUrl>

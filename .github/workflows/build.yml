@@ -1,124 +1,199 @@
 name: Package Rocketchat
 
-concurrency: ci-build
+concurrency:
+  group: ci-build
+  cancel-in-progress: false
 
 on:
-  push: 
-    branches: 
+  push:
+    branches:
       - main
+    # Workflow-only changes must be tested via workflow_dispatch;
+    # merges that touch .github/** do not trigger CI.
     paths-ignore:
       - ".github/**"
   schedule:
-    - cron:  '00 9 * * *'
+    - cron: '00 9 * * *'
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Pack but skip push to Chocolatey"
+        type: boolean
+        default: false
+      force:
+        description: "Bypass the version-changed gate (use to retry after a failed push)"
+        type: boolean
+        default: false
 
 jobs:
   update_version:
     name: Update version
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    
+    permissions:
+      contents: write
+    outputs:
+      changed: ${{ steps.gate.outputs.changed }}
+      version: ${{ steps.gate.outputs.version }}
+
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 
+      - name: Checkout repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-    - name: Get latest version
-      run: |
-        VER=$(curl https://api.github.com/repos/RocketChat/Rocket.Chat.Electron/releases/latest | jq '.["tag_name"]' | tr -d \")
-        echo "version=$VER" >> $GITHUB_ENV
+      - name: Get latest upstream version
+        id: latest
+        run: |
+          VER=$(curl -sS https://api.github.com/repos/RocketChat/Rocket.Chat.Electron/releases/latest | jq -r '.tag_name')
+          # Upstream historically ships unprefixed semver (e.g. 4.14.1); reject anything else.
+          if [[ ! "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Refusing to proceed: upstream tag '$VER' does not match ^[0-9]+\\.[0-9]+\\.[0-9]+$"
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
 
-    - name: Get file hash
-      run: |
-        VERSION=${{ env.version }}
-        wget --no-verbose https://github.com/RocketChat/Rocket.Chat.Electron/releases/download/${{ env.version }}/rocketchat-${{ env.version }}-win-x64.exe
-        HASH=$(sha256sum rocketchat-${{ env.version }}-win-x64.exe | awk "{print \$1}")
-        echo "hash=$HASH" >> $GITHUB_ENV
+      - name: Gate on version change
+        id: gate
+        env:
+          VERSION: ${{ steps.latest.outputs.version }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          # Trim whitespace so a hand-edited trailing newline doesn't defeat the gate.
+          current=$(tr -d '[:space:]' < VERSION 2>/dev/null || echo "")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$FORCE" = "true" ]; then
+            echo "::notice::Forced run; bypassing version-change gate."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif [ "$current" = "$VERSION" ]; then
+            echo "::notice::Upstream tag unchanged ($VERSION); skipping."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
-    - name: Make install script
-      run: |
-        cat <<EOF > tools/chocolateyinstall.ps1
-        \$ErrorActionPreference = 'Stop';
-        Install-ChocolateyPackage -packageName 'rocketchat' -FileType exe -SilentArgs '/S /allusers' -Url 'https://github.com/RocketChat/Rocket.Chat.Electron/releases/download/${{ env.version }}/rocketchat-${{ env.version }}-win-x64.exe' -checksum '${{ env.hash }}' -checksumType 'sha256'
-        EOF
+      - name: Download EXE and compute hash
+        if: steps.gate.outputs.changed == 'true'
+        id: hash
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          wget --no-verbose "https://github.com/RocketChat/Rocket.Chat.Electron/releases/download/${VERSION}/rocketchat-${VERSION}-win-x64.exe"
+          HASH=$(sha256sum "rocketchat-${VERSION}-win-x64.exe" | awk '{print $1}')
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
 
-    - name: Make nuspec
-      run: |
-        cat << EOF > rocketchat.nuspec
-        <?xml version="1.0" encoding="utf-8"?>
-        <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
-          <metadata>
-            <id>rocketchat</id>
-            <version>${{ env.version }}</version>
-            <packageSourceUrl>https://github.com/SierranaTech/chocolateypackage-rocketchat</packageSourceUrl>
-            <owners>Sierra1011</owners>
-            <title>Rocket.Chat</title>
-            <authors>Rocket.Chat</authors>
-            <projectUrl>https://rocket.chat/ </projectUrl>
-            <iconUrl>https://github.com/RocketChat/Rocket.Chat.Artwork/blob/master/Logos/icon.svg</iconUrl>
-            <licenseUrl>https://github.com/RocketChat/Rocket.Chat.Electron/blob/develop/LICENSE</licenseUrl>
-            <requireLicenseAcceptance>true</requireLicenseAcceptance>
-            <projectSourceUrl>https://github.com/RocketChat/Rocket.Chat.Electron</projectSourceUrl>
-            <mailingListUrl>https://rocket.chat/contact</mailingListUrl>
-            <bugTrackerUrl>https://github.com/RocketChat/Rocket.Chat.Electron/issues</bugTrackerUrl>
-            <tags>rocket.chat rocketchat rocket.chat+ admin chat IM</tags>
-            <summary>Official OSX, Windows, and Linux Desktop Clients for Rocket.Chat https://rocket.chat/ </summary>
-            <description>
-        The ultimate Free Open Source Solution for team communications. 
-        Rocket.Chat is free, unlimited and open source. Replace email, HipChat and Slack with the ultimate team chat software solution.
-        Communicate and collaborate using team chat and switch to video or audio calls with screen sharing for more efficient teamwork.
-        Improve productivity by discussing and sharing ideas, projects and files with real-time or asynchronous team chat.
-        With complete access to the source code, you can fully customize, extend or add new functionality to meet your requirements.
-        With Rocket.Chat LiveChat you can add real-time chat widgets to any website or mobile app and get more value from your team chat.
-        Replace other systems and use one communication platform to save time and money. 
-            </description>
-            <releaseNotes>
+      - name: Make install script
+        if: steps.gate.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+          HASH: ${{ steps.hash.outputs.hash }}
+        run: |
+          envsubst '${VERSION} ${HASH}' > tools/chocolateyinstall.ps1 <<'EOF'
+          $ErrorActionPreference = 'Stop';
+          Install-ChocolateyPackage -packageName 'rocketchat' -FileType exe -SilentArgs '/S /allusers' -Url 'https://github.com/RocketChat/Rocket.Chat.Electron/releases/download/${VERSION}/rocketchat-${VERSION}-win-x64.exe' -checksum '${HASH}' -checksumType 'sha256'
+          EOF
 
-            Release notes found here: https://github.com/RocketChat/Rocket.Chat.Electron/releases/tag/${{ env.version }}
+      - name: Make nuspec
+        if: steps.gate.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          envsubst '${VERSION}' > rocketchat.nuspec <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+            <metadata>
+              <id>rocketchat</id>
+              <version>${VERSION}</version>
+              <packageSourceUrl>https://github.com/SierranaTech/chocolateypackage-rocketchat</packageSourceUrl>
+              <owners>SierranaTech</owners>
+              <title>Rocket.Chat</title>
+              <authors>Rocket.Chat</authors>
+              <projectUrl>https://rocket.chat/ </projectUrl>
+              <iconUrl>https://raw.githubusercontent.com/RocketChat/Rocket.Chat.Artwork/master/Logos/icon.svg</iconUrl>
+              <licenseUrl>https://github.com/RocketChat/Rocket.Chat.Electron/blob/develop/LICENSE</licenseUrl>
+              <requireLicenseAcceptance>true</requireLicenseAcceptance>
+              <projectSourceUrl>https://github.com/RocketChat/Rocket.Chat.Electron</projectSourceUrl>
+              <mailingListUrl>https://rocket.chat/contact</mailingListUrl>
+              <bugTrackerUrl>https://github.com/RocketChat/Rocket.Chat.Electron/issues</bugTrackerUrl>
+              <tags>rocket.chat rocketchat rocket.chat+ admin chat IM</tags>
+              <summary>Official OSX, Windows, and Linux Desktop Clients for Rocket.Chat https://rocket.chat/ </summary>
+              <description>
+          The ultimate Free Open Source Solution for team communications.
+          Rocket.Chat is free, unlimited and open source. Replace email, HipChat and Slack with the ultimate team chat software solution.
+          Communicate and collaborate using team chat and switch to video or audio calls with screen sharing for more efficient teamwork.
+          Improve productivity by discussing and sharing ideas, projects and files with real-time or asynchronous team chat.
+          With complete access to the source code, you can fully customize, extend or add new functionality to meet your requirements.
+          With Rocket.Chat LiveChat you can add real-time chat widgets to any website or mobile app and get more value from your team chat.
+          Replace other systems and use one communication platform to save time and money.
+              </description>
+              <releaseNotes>
 
-            </releaseNotes>
-          </metadata>
-          <files>
-            <file src="tools\**" target="tools" />
-          </files>
-        </package>
-        EOF
-    
-    - name: Remove EXE
-      run: rm rocketchat*.exe
+              Release notes found here: https://github.com/RocketChat/Rocket.Chat.Electron/releases/tag/${VERSION}
 
-    - name: Write latest version to file
-      run: echo -n ${{ env.version }} > VERSION
+              </releaseNotes>
+            </metadata>
+            <files>
+              <file src="tools\**" target="tools" />
+            </files>
+          </package>
+          EOF
 
-    - name: Commit and push changes
-      id: push
-      uses: devops-infra/action-commit-push@v0.11.4
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        commit_message: Updated to version ${{ env.version }}
+      - name: Remove EXE
+        if: steps.gate.outputs.changed == 'true'
+        run: rm rocketchat*.exe
+
+      - name: Write VERSION
+        if: steps.gate.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: echo -n "$VERSION" > VERSION
+
+      - name: Upload package sources
+        if: steps.gate.outputs.changed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-sources
+          path: |
+            rocketchat.nuspec
+            tools/chocolateyinstall.ps1
+            VERSION
+          if-no-files-found: error
+
+      - name: Commit and push
+        if: steps.gate.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION rocketchat.nuspec tools/chocolateyinstall.ps1
+          git diff --cached --quiet || git commit -m "Updated to version $VERSION"
+          git push
 
   build:
     name: Chocolatey Build
     runs-on: windows-latest
     timeout-minutes: 15
     needs: update_version
+    if: needs.update_version.outputs.changed == 'true'
+    env:
+      VERSION: ${{ needs.update_version.outputs.version }}
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 
+      - name: Checkout repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-    - name: Choco Package 
-      uses: crazy-max/ghaction-chocolatey@v3.4.0
-      with:
-        args: pack 
+      - name: Download package sources
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: package-sources
+          path: .
 
-    - name: Rename file
-      run: mv rocketchat*.nupkg rocketchat.nupkg
+      - name: Choco pack
+        run: choco pack rocketchat.nuspec
 
-    - name: Choco add API key
-      uses: crazy-max/ghaction-chocolatey@v3.4.0
-      with:
-        args: apikey -y -k ${{ secrets.CHOCO_TOKEN }} --source https://push.chocolatey.org/
+      - name: Rename package
+        run: Move-Item rocketchat*.nupkg rocketchat.nupkg
 
-    - name: Push to Chocolatey
-      uses: crazy-max/ghaction-chocolatey@v3.4.0
-      with:
-        args: push rocketchat.nupkg -s https://push.chocolatey.org/
+      - name: Push to Chocolatey
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_TOKEN }}
+        run: choco push rocketchat.nupkg --source=https://push.chocolatey.org/ --api-key="$env:CHOCO_API_KEY"
