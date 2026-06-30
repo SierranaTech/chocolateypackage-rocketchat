@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>rocketchat</id>
-    <version>4.14.1</version>
+    <version>4.15.0</version>
     <packageSourceUrl>https://github.com/SierranaTech/chocolateypackage-rocketchat</packageSourceUrl>
     <owners>SierranaTech</owners>
     <title>Rocket.Chat</title>
@@ -17,17 +17,17 @@
     <tags>rocket.chat rocketchat rocket.chat+ admin chat IM</tags>
     <summary>Official OSX, Windows, and Linux Desktop Clients for Rocket.Chat https://rocket.chat/ </summary>
     <description>
-The ultimate Free Open Source Solution for team communications. 
+The ultimate Free Open Source Solution for team communications.
 Rocket.Chat is free, unlimited and open source. Replace email, HipChat and Slack with the ultimate team chat software solution.
 Communicate and collaborate using team chat and switch to video or audio calls with screen sharing for more efficient teamwork.
 Improve productivity by discussing and sharing ideas, projects and files with real-time or asynchronous team chat.
 With complete access to the source code, you can fully customize, extend or add new functionality to meet your requirements.
 With Rocket.Chat LiveChat you can add real-time chat widgets to any website or mobile app and get more value from your team chat.
-Replace other systems and use one communication platform to save time and money. 
+Replace other systems and use one communication platform to save time and money.
     </description>
     <releaseNotes>
 
-    Release notes found here: https://github.com/RocketChat/Rocket.Chat.Electron/releases/tag/4.14.1
+    Release notes found here: https://github.com/RocketChat/Rocket.Chat.Electron/releases/tag/4.15.0
 
     </releaseNotes>
   </metadata>
